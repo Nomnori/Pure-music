@@ -491,6 +491,7 @@ class PlaybackPreference {
   List<String> lastOriginalPlaylistPaths;
   bool reinitOnSetSource;
   bool replayGainEnabled;
+  int outputDeviceId;
 
   PlaybackPreference(
     this.playMode,
@@ -507,6 +508,7 @@ class PlaybackPreference {
     this.lastShuffleActive = false,
     this.lastOriginalPlaylistPaths = const [],
     this.reinitOnSetSource = false,
+    this.outputDeviceId = -1,
   });
 
   Map<String, dynamic> toMap() => {
@@ -524,6 +526,7 @@ class PlaybackPreference {
     'lastOriginalPlaylistPaths': lastOriginalPlaylistPaths,
     'reinitOnSetSource': reinitOnSetSource,
     'replayGainEnabled': replayGainEnabled,
+    'outputDeviceId': outputDeviceId,
   };
 
   factory PlaybackPreference.fromMap(Object? value) {
@@ -574,8 +577,15 @@ class PlaybackPreference {
         map['replayGainEnabled'],
         defaultValue: false,
       ),
+      outputDeviceId: _normalizedOutputDeviceId(map['outputDeviceId']),
     );
   }
+}
+
+int _normalizedOutputDeviceId(Object? value) {
+  if (value is! num || !value.isFinite) return -1;
+  final id = value.toInt();
+  return id < -1 ? -1 : id;
 }
 
 class AppPreference {

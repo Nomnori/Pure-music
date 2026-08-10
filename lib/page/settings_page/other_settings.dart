@@ -2,6 +2,7 @@ import 'package:pure_music/core/design_tokens.dart';
 import 'package:pure_music/core/preference.dart';
 import 'package:pure_music/core/utils.dart';
 import 'package:pure_music/component/settings_tile.dart';
+import 'package:pure_music/native/bass/bass_output_device.dart';
 import 'package:pure_music/play_service/audio_echo_log_recorder.dart';
 import 'package:pure_music/play_service/play_service.dart';
 import 'package:flutter/material.dart';
@@ -154,6 +155,188 @@ class _AudioEchoLogRecordControlState extends State<AudioEchoLogRecordControl> {
                   },
           ),
         ],
+      ),
+    );
+  }
+}
+
+class AudioOutputDeviceControl extends StatefulWidget {
+  const AudioOutputDeviceControl({super.key});
+
+  @override
+  State<AudioOutputDeviceControl> createState() =>
+      _AudioOutputDeviceControlState();
+}
+
+class _AudioOutputDeviceControlState extends State<AudioOutputDeviceControl> {
+  bool _busy = false;
+
+  String _labelFor(int deviceId, List<BassOutputDevice> devices) {
+    if (deviceId == -1) return '系统默认';
+    for (final device in devices) {
+      if (device.id == deviceId) return device.label;
+    }
+    return '设备 $deviceId';
+  }
+
+  Future<void> _pickDevice() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final playback = PlayService.instance.playbackService;
+      final devices = playback.listOutputDevices();
+      if (!mounted) return;
+      if (devices.isEmpty) {
+        showTextOnSnackBar('未找到可用输出设备', variant: ToastVariant.error);
+        return;
+      }
+      final currentId = playback.outputDeviceId;
+      final selected = await showDialog<int>(
+        context: context,
+        builder: (context) => _OutputDevicePicker(
+          devices: devices,
+          currentId: currentId,
+        ),
+      );
+      if (!mounted || selected == null || selected == currentId) return;
+      final ok = playback.setOutputDevice(selected);
+      if (!mounted) return;
+      if (ok) {
+        setState(() {});
+        showTextOnSnackBar('已切换输出设备');
+      } else {
+        showTextOnSnackBar('切换输出设备失败', variant: ToastVariant.error);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final playback = PlayService.instance.playbackService;
+    final devices = playback.listOutputDevices();
+    final label = _labelFor(playback.outputDeviceId, devices);
+
+    return SettingsTile(
+      description: '播放设备',
+      subtitle: '切换后正在播放的曲目会短暂中断并恢复',
+      action: OutlinedButton(
+        onPressed: _busy ? null : _pickDevice,
+        child: _busy
+            ? SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: scheme.primary,
+                ),
+              )
+            : Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+              ),
+      ),
+    );
+  }
+}
+
+class _OutputDevicePicker extends StatelessWidget {
+  const _OutputDevicePicker({
+    required this.devices,
+    required this.currentId,
+  });
+
+  final List<BassOutputDevice> devices;
+  final int currentId;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Dialog(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 520),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '选择播放设备',
+                style: TextStyle(
+                  color: scheme.onSurface,
+                  fontSize: AppType.sectionTitle,
+                  fontWeight: AppType.weightBold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: devices.length + 1,
+                  itemExtent: 56,
+                  itemBuilder: (context, index) {
+                    if (index == 0) {
+                      const id = -1;
+                      final selected = currentId == id;
+                      return ListTile(
+                        selected: selected,
+                        selectedTileColor:
+                            scheme.secondaryContainer.withValues(alpha: 0.45),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: AppRadius.mdCircular,
+                        ),
+                        leading: Icon(
+                          selected ? Symbols.check_circle : Symbols.speaker,
+                          color: selected
+                              ? scheme.primary
+                              : scheme.onSurfaceVariant,
+                        ),
+                        title: const Text('系统默认'),
+                        trailing: selected ? const Icon(Symbols.check) : null,
+                        onTap: selected
+                            ? null
+                            : () => Navigator.pop(context, id),
+                      );
+                    }
+                    final device = devices[index - 1];
+                    final selected = device.id == currentId;
+                    return ListTile(
+                      selected: selected,
+                      selectedTileColor:
+                          scheme.secondaryContainer.withValues(alpha: 0.45),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: AppRadius.mdCircular,
+                      ),
+                      leading: Icon(
+                        selected ? Symbols.check_circle : Symbols.speaker,
+                        color: selected
+                            ? scheme.primary
+                            : scheme.onSurfaceVariant,
+                      ),
+                      title: Text(
+                        device.label,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: selected ? const Icon(Symbols.check) : null,
+                      onTap: selected
+                          ? null
+                          : () => Navigator.pop(context, device.id),
+                    );
+                  },
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('取消'),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

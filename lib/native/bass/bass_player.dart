@@ -8,7 +8,9 @@ import 'dart:typed_data';
 import 'package:pure_music/core/preference.dart';
 import 'package:pure_music/native/bass/bass.dart' as bass;
 import 'package:pure_music/native/bass/bass_fx.dart';
+import 'package:pure_music/native/bass/bass_output_device.dart';
 import 'package:pure_music/native/bass/bass_wasapi.dart' as bass_wasapi;
+import 'package:pure_music/native/bass/bass_output_device.dart';
 import 'package:pure_music/core/utils.dart';
 import 'package:ffi/ffi.dart';
 import 'package:path/path.dart' as path;
@@ -95,6 +97,10 @@ class BassPlayer {
 
   /// 是否启用 wasapi 独占模式
   bool wasapiExclusive = false;
+
+  /// BASS 输出设备编号，-1 表示系统默认
+  int _outputDeviceId = -1;
+  int get outputDeviceId => _outputDeviceId;
 
   Timer? _fadeInTimer;
 
@@ -711,7 +717,7 @@ class BassPlayer {
     _loadBassFx();
 
     if (_bass.BASS_Init(
-          -1,
+          _outputDeviceId,
           44100,
           0,
           ffi.nullptr,
@@ -911,6 +917,7 @@ class BassPlayer {
     }
 
     // ─── 6. BASS 初始化 ─────────────────────────────────────────────────────
+    _outputDeviceId = AppPreference.instance.playbackPref.outputDeviceId;
     try {
       _bassInit();
     } catch (err) {
@@ -1034,6 +1041,130 @@ class BassPlayer {
     if (!wasapiExclusive && !_streamWasapiExclusive) return;
     _bassWasapi.BASS_WASAPI_Stop(bass.TRUE);
     _bassWasapi.BASS_WASAPI_Free();
+  }
+
+  List<BassOutputDevice> listOutputDevices() {
+    final count = _bass.BASS_GetDeviceCount();
+    final info = calloc<bass.BASS_DEVICEINFO>();
+    final devices = <BassOutputDevice>[];
+    try {
+      for (var i = 1; i < count; i++) {
+        if (_bass.BASS_GetDeviceInfo(i | bass.BASS_UNICODE, info) ==
+            bass.FALSE) {
+          continue;
+        }
+        final flags = info.ref.flags;
+        if ((flags & bass.BASS_DEVICE_ENABLED) == 0) continue;
+        final namePtr = info.ref.name;
+        if (namePtr == ffi.nullptr) continue;
+        devices.add(
+          BassOutputDevice(
+            id: i,
+            name: namePtr.toDartString(),
+            isDefault: (flags & bass.BASS_DEVICE_DEFAULT) != 0,
+          ),
+        );
+      }
+    } finally {
+      calloc.free(info);
+    }
+    return devices;
+  }
+
+  bool _isValidOutputDevice(int deviceId) {
+    if (deviceId == -1) return true;
+    return listOutputDevices().any((d) => d.id == deviceId);
+  }
+
+  /// 切换 BASS 输出设备；true 表示成功
+  bool setOutputDevice(int deviceId) {
+    if (deviceId == _outputDeviceId) return true;
+    if (!_isValidOutputDevice(deviceId)) return false;
+
+    final prevId = _outputDeviceId;
+    final path = _fPath;
+    final lastPos = position;
+    final wantExclusive = wasapiExclusive || _streamWasapiExclusive;
+    final wasPlaying = playerState == PlayerState.playing;
+
+    _outputDeviceId = deviceId;
+    try {
+      _reinitOutputDevice(
+        path: path,
+        lastPos: lastPos,
+        wantExclusive: wantExclusive,
+        wasPlaying: wasPlaying,
+      );
+      return true;
+    } catch (err, trace) {
+      logger.e('[bass] setOutputDevice failed', error: err, stackTrace: trace);
+      _outputDeviceId = prevId;
+      try {
+        _reinitOutputDevice(
+          path: path,
+          lastPos: lastPos,
+          wantExclusive: wantExclusive,
+          wasPlaying: wasPlaying,
+        );
+      } catch (rollbackErr, rollbackTrace) {
+        logger.e(
+          '[bass] setOutputDevice rollback failed',
+          error: rollbackErr,
+          stackTrace: rollbackTrace,
+        );
+      }
+      return false;
+    }
+  }
+
+  void _reinitOutputDevice({
+    required String? path,
+    required double lastPos,
+    required bool wantExclusive,
+    required bool wasPlaying,
+  }) {
+    _logAudioState('_reinitOutputDevice(begin)');
+    _positionUpdaterVersion++;
+    _positionUpdater?.cancel();
+    _positionUpdater = null;
+
+    if (_fstream != null) {
+      if (wasapiExclusive || _streamWasapiExclusive) {
+        _fadeInTimer?.cancel();
+        _fadeInTimer = null;
+        _stopWasapiOutputIfNeeded();
+      } else {
+        _fadeOutOldStream(_fstream!);
+      }
+      _bass.BASS_ChannelStop(_fstream!);
+      _bass.BASS_StreamFree(_fstream!);
+      _fstream = null;
+      _streamWasapiExclusive = false;
+      wasapiExclusive = false;
+      _cachedLengthSeconds = null;
+    }
+
+    _bassInit();
+    _startDevice();
+
+    if (path == null) {
+      _logAudioState('_reinitOutputDevice(no path)');
+      return;
+    }
+
+    _fPath = path;
+    if (wantExclusive) {
+      _createSharedStream(path, lastPos);
+      if (!wasPlaying) pause();
+      if (!useExclusiveMode(true)) {
+        throw StateError('Failed to restore exclusive mode on new device');
+      }
+      if (!wasPlaying && playerState == PlayerState.playing) pause();
+    } else {
+      _createSharedStream(path, lastPos);
+      if (!wasPlaying) pause();
+    }
+    _logAudioState('_reinitOutputDevice(done)');
   }
 
   /// Rebuilds the audio stream after output-mode changes.
@@ -1486,7 +1617,7 @@ class BassPlayer {
     int result = bass.FALSE;
     for (int attempt = 0; attempt < 3; attempt++) {
       result = _bassWasapi.BASS_WASAPI_Init(
-        -1, // 默认设备
+        _outputDeviceId,
         initFreq,
         0, // 自动选择声道数
         flags,

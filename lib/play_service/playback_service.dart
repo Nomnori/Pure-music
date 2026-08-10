@@ -10,6 +10,7 @@ import 'package:pure_music/play_service/audio_echo_log_recorder.dart';
 import 'package:pure_music/play_service/equalizer_service.dart';
 import 'package:pure_music/play_service/smtc_bridge.dart';
 import 'package:pure_music/native/bass/bass_player.dart';
+import 'package:pure_music/native/bass/bass_output_device.dart';
 import 'package:pure_music/native/rust/api/smtc_flutter.dart';
 import 'package:pure_music/native/rust/api/tag_reader.dart' as rust_tag_reader;
 import 'package:pure_music/native/rust/api/library_db.dart' as rust_library_db;
@@ -169,7 +170,6 @@ class PlaybackService extends ChangeNotifier {
   late final _wasapiExclusive = ValueNotifier(_player.wasapiExclusive);
   ValueNotifier<bool> get wasapiExclusive => _wasapiExclusive;
 
-  /// 独占模式
   void useExclusiveMode(bool exclusive) {
     logger.i('[action] useExclusiveMode=$exclusive');
     AudioEchoLogRecorder.instance
@@ -177,6 +177,21 @@ class PlaybackService extends ChangeNotifier {
     if (_player.useExclusiveMode(exclusive)) {
       _wasapiExclusive.value = exclusive;
     }
+  }
+
+  int get outputDeviceId => _player.outputDeviceId;
+
+  List<BassOutputDevice> listOutputDevices() => _player.listOutputDevices();
+
+  bool setOutputDevice(int deviceId) {
+    logger.i('[action] setOutputDevice=$deviceId');
+    AudioEchoLogRecorder.instance
+        .mark('setOutputDevice', extra: {'deviceId': deviceId});
+    if (!_player.setOutputDevice(deviceId)) return false;
+    _pref.outputDeviceId = deviceId;
+    _wasapiExclusive.value = _player.wasapiExclusive;
+    _savePlaybackOnly();
+    return true;
   }
 
   late final _nowPlaying = ValueNotifier<Audio?>(null);

@@ -70,6 +70,12 @@ const int BASS_ATTRIB_VOLDSP = 19;
 
 const int BASS_DEVICE_REINIT = 128;
 
+const int BASS_DEVICE_ENABLED = 1;
+
+const int BASS_DEVICE_DEFAULT = 2;
+
+const int BASS_DEVICE_INIT = 4;
+
 const int BASS_ERROR_DEVICE = 23;
 
 const int BASS_ERROR_NOTAVAIL = 37;
@@ -95,6 +101,15 @@ typedef HPLUGIN = DWORD;
 typedef HSAMPLE = DWORD;
 typedef HSTREAM = DWORD;
 typedef HFX = DWORD;
+
+final class BASS_DEVICEINFO extends ffi.Struct {
+  external ffi.Pointer<Utf16> name;
+
+  external ffi.Pointer<Utf16> driver;
+
+  @DWORD()
+  external int flags;
+}
 
 const int BASS_FX_DX8_PARAMEQ = 3;
 
@@ -437,4 +452,25 @@ class Bass {
       );
   late final _BASS_ChannelBytes2Seconds =
       _BASS_ChannelBytes2SecondsPtr.asFunction<double Function(int, int)>();
+
+  int BASS_GetDeviceCount() {
+    return _BASS_GetDeviceCount();
+  }
+
+  late final _BASS_GetDeviceCountPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function()>>('BASS_GetDeviceCount');
+  late final _BASS_GetDeviceCount =
+      _BASS_GetDeviceCountPtr.asFunction<int Function()>();
+
+  int BASS_GetDeviceInfo(int device, ffi.Pointer<BASS_DEVICEINFO> info) {
+    return _BASS_GetDeviceInfo(device, info);
+  }
+
+  late final _BASS_GetDeviceInfoPtr = _lookup<
+      ffi.NativeFunction<
+          BOOL Function(DWORD, ffi.Pointer<BASS_DEVICEINFO>)>>(
+    'BASS_GetDeviceInfo',
+  );
+  late final _BASS_GetDeviceInfo = _BASS_GetDeviceInfoPtr.asFunction<
+      int Function(int, ffi.Pointer<BASS_DEVICEINFO>)>();
 }
