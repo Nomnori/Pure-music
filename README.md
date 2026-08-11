@@ -74,7 +74,7 @@
 
 **📝 多格式歌词** — YRC / QRC / KRC / TTML / LRC（含增强 LRC），逐字跟唱，QQ·网易·酷狗·AMLL 在线源，原文 / 翻译 / 注音并排
 
-**🎛️ 专业音频** — 10 段 EQ、半音音调与速度、WASAPI 独占、ReplayGain
+**🎛️ 专业音频** — 10 段 EQ、半音音调与速度、WASAPI 独占、ReplayGain、播放设备选择
 
 **📐 本地曲库** — 艺术家 / 专辑 / 文件夹 / 歌单 / 统计，全局搜索，会话恢复，便携或安装双数据目录
 
@@ -83,18 +83,61 @@
 ## 快速开始
 
 <details>
-<summary>构建流程</summary>
+<summary>开发与构建</summary>
 
-```bash
+### 日常开发
+
+```powershell
 flutter pub get
-flutter run
-
-# 构建 Release
-flutter build windows --release
+flutter run -d windows
 
 # 修改 Rust 后重新生成 FRB 绑定
 # 需先安装: cargo install flutter_rust_bridge_codegen
 flutter_rust_bridge_codegen generate
+```
+
+Debug 产物在 `build/windows/x64/runner/Debug/`，需保留整个目录结构运行，不要只拷贝 `pure_music.exe`。
+
+### 正式发布打包
+
+根目录 `build_windows.ps1` 会同步版本号、编译 Release、整理运行文件并写入 `output/`。
+
+```powershell
+# 便携版 zip（推荐）
+.\build_windows.ps1 -Version 2.2.0 -Mode 2 -NonInteractive
+
+# 安装版（需本机安装 Inno Setup 6/7）
+.\build_windows.ps1 -Version 2.2.0 -Mode 3 -NonInteractive
+```
+
+| 模式 | 作用 |
+|------|------|
+| 1 | 编译便携版（仅文件夹） |
+| 2 | 编译便携版并打 zip |
+| 3 | 编译并制作 Inno Setup 安装器 |
+| 4 | 跳过编译，打包已有 Release 产物为 zip |
+| 5 | 跳过编译，用已有产物制作安装器 |
+
+产物示例：
+
+- 便携版：`output/pure_music_{版本}_release_portable/` 与 `.zip`
+- 安装版：`output/pure_music_{版本}_release_installer.exe`
+
+便携版数据在 exe 旁 `data/`；安装版数据在 `%LOCALAPPDATA%\pure_music`。详细说明见 `page/docs/dev/build.md`。
+
+### Windows 构建前提
+
+Flutter Windows 插件依赖符号链接。若出现 `Building with plugins requires symlink support`，请任选其一：
+
+1. **推荐**：设置 → 隐私和安全性 → 开发者选项 → 打开**开发人员模式**
+2. 以管理员身份运行终端后再执行构建脚本
+
+未开启开发者模式时，可先手动为插件目录建立 junction，再编译并仅用 Mode 4 打包：
+
+```powershell
+# 示例：为 .plugin_symlinks 建立 junction 后
+flutter build windows --release --dart-define=APP_VERSION=2.2.0 --dart-define=PORTABLE_BUILD=true
+.\build_windows.ps1 -Version 2.2.0 -Mode 4 -NonInteractive
 ```
 
 </details>
@@ -103,7 +146,7 @@ flutter_rust_bridge_codegen generate
 <summary>功能总览</summary>
 
 **播放** — 顺序 / 列表循环 / 单曲循环、随机、下一首播放、淡入淡出、会话恢复、迷你播放条
-**音频** — WASAPI 独占、10 段 EQ（前级 / 预设 / AutoEq）、半音音调、速度、KeepPitch、ReplayGain、应用音量 + 系统音量
+**音频** — WASAPI 独占、播放设备选择、10 段 EQ（前级 / 预设 / AutoEq）、半音音调、速度、KeepPitch、ReplayGain、应用音量 + 系统音量（Rust WASAPI）
 **主题** — Material You、封面自动取色 / 自定义固定色、系统主题同步、网格渐变与流光背景（音频律动）、主题色进度条·歌词·间奏·控件、自定义字体、沉浸模式
 **歌词** — 本地外挂 + 内嵌 + 在线（QQ / 网易 / 酷狗 / AMLL）、逐字随格式、注音 / 翻译、简繁转换、行模糊、行动效、逐字上抬、辉光缩放、间奏动画、桌面歌词
 **音乐库** — 歌曲 / 艺术家 / 专辑 / 文件夹 / 歌单浏览、列表·表格与排序记忆、全局搜索、歌单导出、播放统计、SQLite、封面缓存
