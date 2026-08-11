@@ -45,10 +45,19 @@ fn sqlite_path(index_dir: &Path) -> PathBuf {
     index_dir.join("library.sqlite")
 }
 
-#[derive(Clone, Default)]
-struct AudioIdentity {
-    media_id: Option<String>,
-    metadata_key: Option<String>,
+#[derive(Clone)]
+pub(crate) struct AudioIdentity {
+    pub(crate) media_id: Option<String>,
+    pub(crate) metadata_key: Option<String>,
+}
+
+impl Default for AudioIdentity {
+    fn default() -> Self {
+        Self {
+            media_id: None,
+            metadata_key: None,
+        }
+    }
 }
 
 fn path_lookup_key(value: &str) -> String {

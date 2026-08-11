@@ -1,8 +1,7 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_volume_controller/flutter_volume_controller.dart';
+import 'package:pure_music/native/rust/api/system_volume.dart';
 
 class SystemVolumeService {
   SystemVolumeService._();
@@ -16,30 +15,34 @@ class SystemVolumeService {
   final volume = ValueNotifier<double>(0.5);
 
   bool _bound = false;
-  late final ValueChanged<double> _pluginListener;
-
-  Timer? _windowsPollTimer;
-  bool _windowsPollBusy = false;
-  int _windowsReadFailures = 0;
+  StreamSubscription<double>? _volumeSub;
+  bool _dragging = false;
+  bool _setting = false;
+  double? _pendingSet;
 
   void ensureBound() {
     if (_bound) return;
-    _pluginListener = (v) {
-      if ((v - volume.value).abs() > 0.0001) {
-        volume.value = v;
-      }
-    };
-    FlutterVolumeController.addListener(_pluginListener);
     _bound = true;
-    refresh(timeout: const Duration(milliseconds: 600));
-    if (Platform.isWindows) {
-      _startWindowsPoll();
-    }
+    try {
+      volume.value = systemVolumeGet().clamp(0.0, 1.0);
+    } catch (_) {}
+    _volumeSub = systemVolumeInit().listen(
+      (v) {
+        if (_dragging) return;
+        final next = v.clamp(0.0, 1.0);
+        if ((next - volume.value).abs() > 0.0001) {
+          volume.value = next;
+        }
+      },
+      onError: (_) {},
+    );
   }
 
   Future<double?> read({required Duration timeout}) async {
     try {
-      return await FlutterVolumeController.getVolume().timeout(timeout);
+      return await Future<double>.value(systemVolumeGet())
+          .timeout(timeout)
+          .then((v) => v.clamp(0.0, 1.0));
     } catch (_) {
       return null;
     }
@@ -52,48 +55,37 @@ class SystemVolumeService {
     }
   }
 
+  void beginDrag() => _dragging = true;
+
+  void endDrag() {
+    _dragging = false;
+    refresh(timeout: const Duration(milliseconds: 400));
+  }
+
   Future<void> set(double v) async {
-    await FlutterVolumeController.setVolume(v);
-  }
-
-  void _rebindPluginListener() {
-    FlutterVolumeController.removeListener();
-    FlutterVolumeController.addListener(_pluginListener);
-  }
-
-  void _startWindowsPoll() {
-    _windowsPollTimer?.cancel();
-    _windowsPollTimer =
-        Timer.periodic(const Duration(milliseconds: 250), (_) async {
-      if (_windowsPollBusy) return;
-      _windowsPollBusy = true;
+    _pendingSet = v.clamp(0.0, 1.0);
+    if (_setting) return;
+    _setting = true;
+    while (_pendingSet != null) {
+      final next = _pendingSet!;
+      _pendingSet = null;
       try {
-        final v = await read(timeout: const Duration(seconds: 1));
-        if (v == null) {
-          _windowsReadFailures += 1;
-          if (_windowsReadFailures >= 3) {
-            _windowsReadFailures = 0;
-            _rebindPluginListener();
-          }
-          return;
-        }
-        _windowsReadFailures = 0;
-        if ((v - volume.value).abs() > 0.005) {
-          volume.value = v;
-        }
-      } finally {
-        _windowsPollBusy = false;
-      }
-    });
+        systemVolumeSet(val: next);
+      } catch (_) {}
+    }
+    _setting = false;
   }
 
   void dispose() {
-    _windowsPollTimer?.cancel();
+    _volumeSub?.cancel();
+    _volumeSub = null;
     if (_bound) {
-      FlutterVolumeController.removeListener();
+      try {
+        systemVolumeDispose();
+      } catch (_) {}
       _bound = false;
     }
     volume.dispose();
+    _instance = null;
   }
 }
-

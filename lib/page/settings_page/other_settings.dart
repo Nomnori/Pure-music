@@ -170,6 +170,29 @@ class AudioOutputDeviceControl extends StatefulWidget {
 
 class _AudioOutputDeviceControlState extends State<AudioOutputDeviceControl> {
   bool _busy = false;
+  List<BassOutputDevice> _devices = const [];
+  String _label = '系统默认';
+
+  @override
+  void initState() {
+    super.initState();
+    final deviceId = PlayService.instance.playbackService.outputDeviceId;
+    _label = deviceId == -1 ? '系统默认' : '设备 $deviceId';
+  }
+
+  void _refreshDevices() {
+    try {
+      final playback = PlayService.instance.playbackService;
+      _devices = playback.listOutputDevices();
+      _label = _labelFor(playback.outputDeviceId, _devices);
+    } catch (err, trace) {
+      logger.w('[settings] refresh output devices failed',
+          error: err, stackTrace: trace);
+      _devices = const [];
+      _label = '系统默认';
+    }
+    if (mounted) setState(() {});
+  }
 
   String _labelFor(int deviceId, List<BassOutputDevice> devices) {
     if (deviceId == -1) return '系统默认';
@@ -185,11 +208,8 @@ class _AudioOutputDeviceControlState extends State<AudioOutputDeviceControl> {
     try {
       final playback = PlayService.instance.playbackService;
       final devices = playback.listOutputDevices();
+      if (devices.isNotEmpty) _devices = devices;
       if (!mounted) return;
-      if (devices.isEmpty) {
-        showTextOnSnackBar('未找到可用输出设备', variant: ToastVariant.error);
-        return;
-      }
       final currentId = playback.outputDeviceId;
       final selected = await showDialog<int>(
         context: context,
@@ -202,7 +222,7 @@ class _AudioOutputDeviceControlState extends State<AudioOutputDeviceControl> {
       final ok = playback.setOutputDevice(selected);
       if (!mounted) return;
       if (ok) {
-        setState(() {});
+        _refreshDevices();
         showTextOnSnackBar('已切换输出设备');
       } else {
         showTextOnSnackBar('切换输出设备失败', variant: ToastVariant.error);
@@ -215,9 +235,6 @@ class _AudioOutputDeviceControlState extends State<AudioOutputDeviceControl> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final playback = PlayService.instance.playbackService;
-    final devices = playback.listOutputDevices();
-    final label = _labelFor(playback.outputDeviceId, devices);
 
     return SettingsTile(
       description: '播放设备',
@@ -234,7 +251,7 @@ class _AudioOutputDeviceControlState extends State<AudioOutputDeviceControl> {
                 ),
               )
             : Text(
-                label,
+                _label,
                 overflow: TextOverflow.ellipsis,
               ),
       ),
@@ -255,8 +272,9 @@ class _OutputDevicePicker extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Dialog(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 520),
+      child: SizedBox(
+        width: 480,
+        height: 520,
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(

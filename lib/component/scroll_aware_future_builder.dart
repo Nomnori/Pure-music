@@ -45,8 +45,9 @@ class _ScrollAwareFutureBuilderState<T>
       );
       return;
     }
-    final future = widget.future();
-    setState(() => _future = future);
+    _future = widget.future();
+    if (!mounted || generation != _loadGeneration) return;
+    setState(() {});
   }
 
   @override

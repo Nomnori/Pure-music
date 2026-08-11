@@ -3,6 +3,7 @@
 //
 
 pub mod amll_ttml;
+pub mod audio_output_device;
 pub mod color_extraction;
 pub mod installed_font;
 pub mod library_db;

@@ -6,39 +6,75 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `cover_source_signature`, `init_schema`, `open_connection`, `read_cover_thumbnail`, `sqlite_path`, `write_cover_thumbnail`, `write_index_value_to_sqlite`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`
+// These functions are ignored because they are not marked as `pub`: `audio_identity`, `backfill_audio_identities`, `cover_source_signature`, `init_schema`, `metadata_match_key`, `normalize_identity_part`, `open_connection`, `path_lookup_key`, `read_cover_thumbnail`, `sqlite_path`, `stable_file_id`, `unique_play_count`, `with_cover_connection`, `write_cover_thumbnail`, `write_index_value_to_sqlite`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`
 
-Future<Uint8List?> getCachedCover(
-        {required String indexPath,
-        required String path,
-        required int width,
-        required int height}) =>
-    RustLib.instance.api.crateApiLibraryDbGetCachedCover(
-        indexPath: indexPath, path: path, width: width, height: height);
+Future<Uint8List?> getCachedCover({
+  required String indexPath,
+  required String path,
+  required int width,
+  required int height,
+}) => RustLib.instance.api.crateApiLibraryDbGetCachedCover(
+  indexPath: indexPath,
+  path: path,
+  width: width,
+  height: height,
+);
 
-Future<void> incrementPlayCount(
-        {required String indexPath, required String path}) =>
-    RustLib.instance.api
-        .crateApiLibraryDbIncrementPlayCount(indexPath: indexPath, path: path);
+Future<void> incrementPlayCount({
+  required String indexPath,
+  required String path,
+}) => RustLib.instance.api.crateApiLibraryDbIncrementPlayCount(
+  indexPath: indexPath,
+  path: path,
+);
 
-Future<List<PlayCountEntry>> getTopPlayed(
-        {required String indexPath, required int limit}) =>
-    RustLib.instance.api
-        .crateApiLibraryDbGetTopPlayed(indexPath: indexPath, limit: limit);
+Future<List<PlayCountEntry>> getTopPlayed({
+  required String indexPath,
+  required int limit,
+}) => RustLib.instance.api.crateApiLibraryDbGetTopPlayed(
+  indexPath: indexPath,
+  limit: limit,
+);
 
-Future<PlatformInt64> getPlayCount(
-        {required String indexPath, required String path}) =>
-    RustLib.instance.api
-        .crateApiLibraryDbGetPlayCount(indexPath: indexPath, path: path);
+Future<PlatformInt64> getPlayCount({
+  required String indexPath,
+  required String path,
+}) => RustLib.instance.api.crateApiLibraryDbGetPlayCount(
+  indexPath: indexPath,
+  path: path,
+);
 
-Future<void> migrateIndexJsonToSqlite({required String indexPath}) =>
-    RustLib.instance.api
-        .crateApiLibraryDbMigrateIndexJsonToSqlite(indexPath: indexPath);
+Future<void> migrateIndexJsonToSqlite({required String indexPath}) => RustLib
+    .instance
+    .api
+    .crateApiLibraryDbMigrateIndexJsonToSqlite(indexPath: indexPath);
 
 Future<List<IndexFolder>> readIndexFromSqlite({required String indexPath}) =>
-    RustLib.instance.api
-        .crateApiLibraryDbReadIndexFromSqlite(indexPath: indexPath);
+    RustLib.instance.api.crateApiLibraryDbReadIndexFromSqlite(
+      indexPath: indexPath,
+    );
+
+class AudioIdentity {
+  final String? mediaId;
+  final String? metadataKey;
+
+  const AudioIdentity({this.mediaId, this.metadataKey});
+
+  static Future<AudioIdentity> default_() =>
+      RustLib.instance.api.crateApiLibraryDbAudioIdentityDefault();
+
+  @override
+  int get hashCode => mediaId.hashCode ^ metadataKey.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AudioIdentity &&
+          runtimeType == other.runtimeType &&
+          mediaId == other.mediaId &&
+          metadataKey == other.metadataKey;
+}
 
 class IndexAudio {
   final String title;

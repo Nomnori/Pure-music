@@ -256,12 +256,13 @@ class PlaybackService extends ChangeNotifier {
   double get volumeDsp => _player.volumeDsp;
 
   /// 修改解码时的音量（不影响 Windows 系统音量）
-  void setVolumeDsp(double volume) {
+  void setVolumeDsp(double volume, {bool persist = true}) {
+    _pref.volumeDsp = volume;
+    _eq.reapplyOutputGain();
+    if (!persist) return;
     logger.i('[action] setVolumeDsp=$volume');
     AudioEchoLogRecorder.instance
         .mark('setVolumeDsp', extra: {'value': volume});
-    _pref.volumeDsp = volume;
-    _eq.reapplyOutputGain();
     _savePlaybackOnly();
   }
 

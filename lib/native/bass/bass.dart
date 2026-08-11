@@ -103,9 +103,9 @@ typedef HSTREAM = DWORD;
 typedef HFX = DWORD;
 
 final class BASS_DEVICEINFO extends ffi.Struct {
-  external ffi.Pointer<Utf16> name;
+  external ffi.Pointer<ffi.Char> name;
 
-  external ffi.Pointer<Utf16> driver;
+  external ffi.Pointer<ffi.Char> driver;
 
   @DWORD()
   external int flags;
@@ -452,15 +452,6 @@ class Bass {
       );
   late final _BASS_ChannelBytes2Seconds =
       _BASS_ChannelBytes2SecondsPtr.asFunction<double Function(int, int)>();
-
-  int BASS_GetDeviceCount() {
-    return _BASS_GetDeviceCount();
-  }
-
-  late final _BASS_GetDeviceCountPtr =
-      _lookup<ffi.NativeFunction<ffi.Int Function()>>('BASS_GetDeviceCount');
-  late final _BASS_GetDeviceCount =
-      _BASS_GetDeviceCountPtr.asFunction<int Function()>();
 
   int BASS_GetDeviceInfo(int device, ffi.Pointer<BASS_DEVICEINFO> info) {
     return _BASS_GetDeviceInfo(device, info);

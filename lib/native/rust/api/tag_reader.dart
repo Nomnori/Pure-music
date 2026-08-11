@@ -16,20 +16,29 @@ Future<AudioExtraMetadata> readAudioExtraMetadata({required String path}) =>
 
 /// for Flutter
 /// 一次调用完成封面读取+颜色提取，避免 image bytes 穿越 FFI 两次
-Future<(Uint8List?, Uint32List)> getPictureAndColors(
-        {required String path,
-        required int width,
-        required int height,
-        required int numColors}) =>
-    RustLib.instance.api.crateApiTagReaderGetPictureAndColors(
-        path: path, width: width, height: height, numColors: numColors);
+Future<(Uint8List?, Uint32List)> getPictureAndColors({
+  required String path,
+  required int width,
+  required int height,
+  required int numColors,
+}) => RustLib.instance.api.crateApiTagReaderGetPictureAndColors(
+  path: path,
+  width: width,
+  height: height,
+  numColors: numColors,
+);
 
 /// for Flutter
 /// 如果无法通过 Lofty 获取则通过 Windows 获取
-Future<Uint8List?> getPictureFromPath(
-        {required String path, required int width, required int height}) =>
-    RustLib.instance.api.crateApiTagReaderGetPictureFromPath(
-        path: path, width: width, height: height);
+Future<Uint8List?> getPictureFromPath({
+  required String path,
+  required int width,
+  required int height,
+}) => RustLib.instance.api.crateApiTagReaderGetPictureFromPath(
+  path: path,
+  width: width,
+  height: height,
+);
 
 /// for Flutter
 /// 只读取 ID3V2、VorbisComment、Mp4Ilst 存储的内嵌歌词
@@ -38,26 +47,34 @@ Future<String?> getLyricFromPath({required String path}) =>
 
 /// for Flutter
 /// 通用标签写入函数。only_changed=true 时只写非 None 字段
-Future<void> writeAudioTags(
-        {required String path,
-        required WriteTagPayload payload,
-        required bool onlyChanged}) =>
-    RustLib.instance.api.crateApiTagReaderWriteAudioTags(
-        path: path, payload: payload, onlyChanged: onlyChanged);
+Future<void> writeAudioTags({
+  required String path,
+  required WriteTagPayload payload,
+  required bool onlyChanged,
+}) => RustLib.instance.api.crateApiTagReaderWriteAudioTags(
+  path: path,
+  payload: payload,
+  onlyChanged: onlyChanged,
+);
 
 /// for Flutter
 /// 写入歌词到音频文件标签（ID3/VorbisComment/MP4 等），使用 Lofty 的 `ItemKey::Lyrics` 映射
 /// 使用 ParsingMode::Relaxed 兼容更多有问题的标签文件
 Future<void> writeLyricToPath({required String path, required String lyric}) =>
-    RustLib.instance.api
-        .crateApiTagReaderWriteLyricToPath(path: path, lyric: lyric);
+    RustLib.instance.api.crateApiTagReaderWriteLyricToPath(
+      path: path,
+      lyric: lyric,
+    );
 
 /// for Flutter
 /// 扫描给定路径下所有子文件夹（包括自己）的音乐文件并把索引保存在 index_path/index.json。
-Stream<IndexActionState> buildIndexFromFoldersRecursively(
-        {required List<String> folders, required String indexPath}) =>
-    RustLib.instance.api.crateApiTagReaderBuildIndexFromFoldersRecursively(
-        folders: folders, indexPath: indexPath);
+Stream<IndexActionState> buildIndexFromFoldersRecursively({
+  required List<String> folders,
+  required String indexPath,
+}) => RustLib.instance.api.crateApiTagReaderBuildIndexFromFoldersRecursively(
+  folders: folders,
+  indexPath: indexPath,
+);
 
 Stream<IndexActionState> updateIndex({required String indexPath}) =>
     RustLib.instance.api.crateApiTagReaderUpdateIndex(indexPath: indexPath);
@@ -66,10 +83,7 @@ class AudioExtraItem {
   final String key;
   final String value;
 
-  const AudioExtraItem({
-    required this.key,
-    required this.value,
-  });
+  const AudioExtraItem({required this.key, required this.value});
 
   @override
   int get hashCode => key.hashCode ^ value.hashCode;
@@ -141,10 +155,7 @@ class IndexActionState {
   /// describe action state
   final String message;
 
-  const IndexActionState({
-    required this.progress,
-    required this.message,
-  });
+  const IndexActionState({required this.progress, required this.message});
 
   @override
   int get hashCode => progress.hashCode ^ message.hashCode;

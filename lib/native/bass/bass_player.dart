@@ -10,7 +10,7 @@ import 'package:pure_music/native/bass/bass.dart' as bass;
 import 'package:pure_music/native/bass/bass_fx.dart';
 import 'package:pure_music/native/bass/bass_output_device.dart';
 import 'package:pure_music/native/bass/bass_wasapi.dart' as bass_wasapi;
-import 'package:pure_music/native/bass/bass_output_device.dart';
+import 'package:pure_music/native/rust/api/audio_output_device.dart';
 import 'package:pure_music/core/utils.dart';
 import 'package:ffi/ffi.dart';
 import 'package:path/path.dart' as path;
@@ -1044,36 +1044,89 @@ class BassPlayer {
   }
 
   List<BassOutputDevice> listOutputDevices() {
-    final count = _bass.BASS_GetDeviceCount();
-    final info = calloc<bass.BASS_DEVICEINFO>();
+    return _listOutputDevices();
+  }
+
+  List<BassOutputDevice> _listOutputDevices() {
     final devices = <BassOutputDevice>[];
+    final info = calloc<bass.BASS_DEVICEINFO>();
     try {
-      for (var i = 1; i < count; i++) {
-        if (_bass.BASS_GetDeviceInfo(i | bass.BASS_UNICODE, info) ==
-            bass.FALSE) {
-          continue;
+      final nameByEndpointId = <String, ({String name, bool isDefault})>{};
+      if (Platform.isWindows) {
+        for (final item in listRenderAudioDevices() ?? const []) {
+          nameByEndpointId[_normalizeEndpointId(item.endpointId)] = (
+            name: item.name,
+            isDefault: item.isDefault,
+          );
         }
+      }
+
+      for (var bassId = 1; bassId < 32; bassId++) {
+        if (_bass.BASS_GetDeviceInfo(bassId, info) == bass.FALSE) break;
         final flags = info.ref.flags;
         if ((flags & bass.BASS_DEVICE_ENABLED) == 0) continue;
-        final namePtr = info.ref.name;
-        if (namePtr == ffi.nullptr) continue;
+
+        final endpointId = _readBassEndpointId(info.ref.driver);
+        final meta = endpointId != null
+            ? nameByEndpointId[_normalizeEndpointId(endpointId)]
+            : null;
         devices.add(
           BassOutputDevice(
-            id: i,
-            name: namePtr.toDartString(),
-            isDefault: (flags & bass.BASS_DEVICE_DEFAULT) != 0,
+            id: bassId,
+            name: meta?.name ?? '音频设备 $bassId',
+            isDefault: meta?.isDefault ??
+                (flags & bass.BASS_DEVICE_DEFAULT) != 0,
           ),
         );
       }
+    } catch (err, trace) {
+      logger.w('[bass] listOutputDevices failed', error: err, stackTrace: trace);
     } finally {
       calloc.free(info);
+    }
+    if (devices.isNotEmpty) {
+      logger.i('[bass] listed ${devices.length} output devices');
     }
     return devices;
   }
 
+  String _normalizeEndpointId(String id) => id.trim().toLowerCase();
+
+  String? _readBassEndpointId(ffi.Pointer<ffi.Char> ptr) {
+    if (ptr == ffi.nullptr) return null;
+    final bytes = ptr.cast<ffi.Uint8>();
+    if (bytes[0] != 0x7B) return null;
+
+    if (bytes[1] == 0) {
+      final codeUnits = <int>[];
+      for (var i = 0; i < 512; i += 2) {
+        final unit = bytes[i] | (bytes[i + 1] << 8);
+        if (unit == 0) break;
+        codeUnits.add(unit);
+      }
+      if (codeUnits.isEmpty) return null;
+      return String.fromCharCodes(codeUnits).trim();
+    }
+
+    final raw = <int>[];
+    for (var i = 0; i < 512; i++) {
+      final value = bytes[i];
+      if (value == 0) break;
+      raw.add(value);
+    }
+    if (raw.isEmpty) return null;
+    return String.fromCharCodes(raw).trim();
+  }
+
   bool _isValidOutputDevice(int deviceId) {
     if (deviceId == -1) return true;
-    return listOutputDevices().any((d) => d.id == deviceId);
+    final info = calloc<bass.BASS_DEVICEINFO>();
+    try {
+      if (_bass.BASS_GetDeviceInfo(deviceId, info) == bass.FALSE) return false;
+      return (info.ref.flags & bass.BASS_DEVICE_ENABLED) != 0;
+    } finally {
+      calloc.free(info);
+    }
   }
 
   /// 切换 BASS 输出设备；true 表示成功

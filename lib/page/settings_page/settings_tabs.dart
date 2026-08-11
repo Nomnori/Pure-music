@@ -55,52 +55,55 @@ class _SettingsTabsState extends State<SettingsTabs> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Wrap(
-          spacing: 8.0,
-          runSpacing: 8.0,
-          children: List.generate(_tabs.length, (i) {
-            final selected = _currentIndex == i;
-            final canSwitch =
-                canSwitchTab(currentIndex: _currentIndex, targetIndex: i);
-            return OutlinedButton.icon(
-              onPressed:
-                  canSwitch ? () => setState(() => _currentIndex = i) : null,
-              icon: Icon(_tabs[i].icon, size: 18),
-              label: Text(_tabs[i].label),
-              style: ButtonStyle(
-                foregroundColor: WidgetStatePropertyAll(
-                  selected ? scheme.onSecondaryContainer : scheme.onSurface,
-                ),
-                backgroundColor: WidgetStatePropertyAll(
-                  selected
-                      ? scheme.secondaryContainer
-                      : scheme.surfaceContainerHighest,
-                ),
-                side: WidgetStatePropertyAll(
-                  BorderSide(
-                    color: selected ? scheme.primary : scheme.outline,
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Wrap(
+            spacing: 8.0,
+            runSpacing: 8.0,
+            children: List.generate(_tabs.length, (i) {
+              final selected = _currentIndex == i;
+              final canSwitch =
+                  canSwitchTab(currentIndex: _currentIndex, targetIndex: i);
+              return OutlinedButton.icon(
+                onPressed:
+                    canSwitch ? () => setState(() => _currentIndex = i) : null,
+                icon: Icon(_tabs[i].icon, size: 18),
+                label: Text(_tabs[i].label),
+                style: ButtonStyle(
+                  foregroundColor: WidgetStatePropertyAll(
+                    selected ? scheme.onSecondaryContainer : scheme.onSurface,
+                  ),
+                  backgroundColor: WidgetStatePropertyAll(
+                    selected
+                        ? scheme.secondaryContainer
+                        : scheme.surfaceContainerHighest,
+                  ),
+                  side: WidgetStatePropertyAll(
+                    BorderSide(
+                      color: selected ? scheme.primary : scheme.outline,
+                    ),
+                  ),
+                  shape: WidgetStatePropertyAll(
+                    RoundedRectangleBorder(borderRadius: AppRadius.smCircular),
+                  ),
+                  padding: const WidgetStatePropertyAll(
+                    EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   ),
                 ),
-                shape: WidgetStatePropertyAll(
-                  RoundedRectangleBorder(borderRadius: AppRadius.smCircular),
-                ),
-                padding: const WidgetStatePropertyAll(
-                  EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                ),
-              ),
-            );
-          }),
+              );
+            }),
+          ),
         ),
         const SizedBox(height: 24.0),
         Expanded(
           child: DirectionalTabView(
             index: _currentIndex,
-            children: const [
-              _AppearanceTabContent(),
-              _LyricsTabContent(),
-              _DesktopLyricTabContent(),
-              _AdvancedTabContent(),
-              _AboutTabContent(),
+            children: [
+              const _AppearanceTabContent(),
+              const _LyricsTabContent(),
+              const _DesktopLyricTabContent(),
+              _AdvancedTabContent(active: _currentIndex == 3),
+              const _AboutTabContent(),
             ],
           ),
         ),
@@ -1979,11 +1982,20 @@ class _DesktopColorPickerDialogState extends State<_DesktopColorPickerDialog> {
   }
 }
 
-class _AdvancedTabContent extends StatelessWidget {
-  const _AdvancedTabContent();
+class _AdvancedTabContent extends StatefulWidget {
+  const _AdvancedTabContent({required this.active});
+
+  final bool active;
 
   @override
+  State<_AdvancedTabContent> createState() => _AdvancedTabContentState();
+}
+
+class _AdvancedTabContentState extends State<_AdvancedTabContent> {
+  @override
   Widget build(BuildContext context) {
+    if (!widget.active) return const SizedBox.shrink();
+
     return ListView(
       padding: const EdgeInsets.only(bottom: 96.0, right: 20),
       children: const [

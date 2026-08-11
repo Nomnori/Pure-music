@@ -1005,37 +1005,172 @@ class _NowPlayingVolDspSliderState extends State<_NowPlayingVolDspSlider> {
 
   bool isDragging = false;
   bool isSystemDragging = false;
-  bool _isMenuOpen = false;
+  bool _dialogOpen = false;
   bool _disposed = false;
-  double _lastVolumeDsp = -1;
   Timer? _systemVolBoostTimer;
   late final VoidCallback _systemVolValueListener;
-  Timer? _indicatorTimer;
-  Timer? _systemIndicatorTimer;
-  bool _showCustomIndicator = false;
-  bool _showSystemCustomIndicator = false;
-  bool _isHovering = false;
-  bool _isSystemHovering = false;
-  MenuController? _menuController;
-  Timer? _autoCloseTimer;
   int _lastVolumeHotkeySerial = 0;
   late final VoidCallback _hotkeyListener;
-  late final VoidCallback _nowPlayingListener;
 
-  void _scheduleAutoClose() {
-    _autoCloseTimer?.cancel();
-    _autoCloseTimer = Timer(const Duration(milliseconds: 950), () {
-      if (_disposed || !mounted) return;
-      if (isDragging || isSystemDragging || _isHovering || _isSystemHovering) {
-        _scheduleAutoClose();
-        return;
-      }
-      _menuController?.close();
-    });
-  }
+  Future<void> _showVolumeDialog() async {
+    if (!mounted || _dialogOpen) return;
+    _dialogOpen = true;
+    systemVolumeService.ensureBound();
+    dragVolDsp.value = playbackService.volumeDsp;
+    dragSystemVol.value = systemVolumeService.volume.value;
 
-  Future<double?> _readSystemVol({required Duration timeout}) async {
-    return systemVolumeService.read(timeout: timeout);
+    var ticks = 0;
+    _systemVolBoostTimer?.cancel();
+    _systemVolBoostTimer = Timer.periodic(
+      const Duration(milliseconds: 120),
+      (_) async {
+        if (!mounted || isSystemDragging || !_dialogOpen) return;
+        if (ticks++ > 25) {
+          _systemVolBoostTimer?.cancel();
+          return;
+        }
+        final v = await systemVolumeService.read(
+          timeout: const Duration(milliseconds: 500),
+        );
+        if (v != null && (v - dragSystemVol.value).abs() > 0.003) {
+          dragSystemVol.value = v;
+        }
+      },
+    );
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        final scheme = Theme.of(dialogContext).colorScheme;
+        return Dialog(
+          child: SizedBox(
+            width: 300,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ValueListenableBuilder<double>(
+                    valueListenable: dragSystemVol,
+                    builder: (context, systemVolValue, _) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                '系统音量',
+                                style: TextStyle(
+                                  color: scheme.onSurface,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                '${(systemVolValue * 100).round()}%',
+                                style: TextStyle(
+                                  color: scheme.onSurfaceVariant,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Slider(
+                            thumbColor: scheme.secondary,
+                            activeColor: scheme.secondary,
+                            inactiveColor: scheme.outline,
+                            value: systemVolValue,
+                            onChangeStart: (value) {
+                              isSystemDragging = true;
+                              systemVolumeService.beginDrag();
+                              dragSystemVol.value = value;
+                              systemVolumeService.set(value);
+                            },
+                            onChanged: (value) {
+                              dragSystemVol.value = value;
+                              systemVolumeService.set(value);
+                            },
+                            onChangeEnd: (value) {
+                              isSystemDragging = false;
+                              dragSystemVol.value = value;
+                              systemVolumeService.set(value);
+                              systemVolumeService.endDrag();
+                            },
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  const Divider(height: 24),
+                  ListenableBuilder(
+                    listenable: Listenable.merge([dragVolDsp, playbackService]),
+                    builder: (context, _) {
+                      final currentValue = isDragging
+                          ? dragVolDsp.value
+                          : playbackService.volumeDsp;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                '应用音量',
+                                style: TextStyle(
+                                  color: scheme.onSurface,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                '${(currentValue * 100).round()}%',
+                                style: TextStyle(
+                                  color: scheme.onSurfaceVariant,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Slider(
+                            thumbColor: scheme.primary,
+                            activeColor: scheme.primary,
+                            inactiveColor: scheme.outline,
+                            value: currentValue,
+                            onChangeStart: (value) {
+                              isDragging = true;
+                              dragVolDsp.value = value;
+                              playbackService.setVolumeDsp(
+                                value,
+                                persist: false,
+                              );
+                            },
+                            onChanged: (value) {
+                              dragVolDsp.value = value;
+                              playbackService.setVolumeDsp(
+                                value,
+                                persist: false,
+                              );
+                            },
+                            onChangeEnd: (value) {
+                              isDragging = false;
+                              dragVolDsp.value = value;
+                              playbackService.setVolumeDsp(value);
+                            },
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    _systemVolBoostTimer?.cancel();
+    _dialogOpen = false;
   }
 
   @override
@@ -1048,65 +1183,24 @@ class _NowPlayingVolDspSliderState extends State<_NowPlayingVolDspSlider> {
       if (event.action != HotkeyUiAction.volumeStep) return;
       if (event.serial == _lastVolumeHotkeySerial) return;
       _lastVolumeHotkeySerial = event.serial;
-
-      if (_menuController?.isOpen != true) {
-        _menuController?.open();
-      }
-      if (!isDragging) {
+      if (_dialogOpen && !isDragging) {
         dragVolDsp.value = playbackService.volumeDsp;
       }
-      _triggerIndicator();
-      _scheduleAutoClose();
     };
     hotkeyUiFeedback.addListener(_hotkeyListener);
-    _lastVolumeDsp = playbackService.volumeDsp;
-    _nowPlayingListener = () {
-      if (_disposed || !mounted) return;
-      final v = playbackService.volumeDsp;
-      if ((v - _lastVolumeDsp).abs() <= 0.0001) return;
-      _lastVolumeDsp = v;
-      if (_isMenuOpen && !isDragging) {
-        _triggerIndicator();
-      }
-    };
-    playbackService.nowPlayingNotifier.addListener(_nowPlayingListener);
     systemVolumeService.ensureBound();
     dragSystemVol.value = systemVolumeService.volume.value;
     _systemVolValueListener = () {
-      if (!mounted || isSystemDragging) return;
+      if (!mounted || isSystemDragging || !_dialogOpen) return;
       dragSystemVol.value = systemVolumeService.volume.value;
     };
     systemVolumeService.volume.addListener(_systemVolValueListener);
-  }
-
-  void _triggerIndicator() {
-    setState(() => _showCustomIndicator = true);
-    _indicatorTimer?.cancel();
-    _indicatorTimer = Timer(const Duration(milliseconds: 1000), () {
-      if (mounted) {
-        setState(() => _showCustomIndicator = false);
-      }
-    });
-  }
-
-  void _triggerSystemIndicator() {
-    setState(() => _showSystemCustomIndicator = true);
-    _systemIndicatorTimer?.cancel();
-    _systemIndicatorTimer = Timer(const Duration(milliseconds: 1000), () {
-      if (mounted) {
-        setState(() => _showSystemCustomIndicator = false);
-      }
-    });
   }
 
   @override
   void dispose() {
     _disposed = true;
     _systemVolBoostTimer?.cancel();
-    _indicatorTimer?.cancel();
-    _systemIndicatorTimer?.cancel();
-    _autoCloseTimer?.cancel();
-    playbackService.nowPlayingNotifier.removeListener(_nowPlayingListener);
     systemVolumeService.volume.removeListener(_systemVolValueListener);
     hotkeyUiFeedback.removeListener(_hotkeyListener);
     super.dispose();
@@ -1116,243 +1210,12 @@ class _NowPlayingVolDspSliderState extends State<_NowPlayingVolDspSlider> {
   Widget build(BuildContext context) {
     final useMonet = AppSettings.instance.useMaterialYouForControls;
     final scheme = Theme.of(context).colorScheme;
-    final menuWidth = (MediaQuery.sizeOf(context).width - 64.0)
-        .clamp(180.0, 300.0)
-        .toDouble();
-    //
 
-    return MenuAnchor(
-      style: appMenuStyle,
-      onOpen: () {
-        _isMenuOpen = true;
-        if (!isDragging) {
-          dragVolDsp.value = playbackService.volumeDsp;
-        }
-        int ticks = 0;
-        _systemVolBoostTimer?.cancel();
-        _systemVolBoostTimer = Timer.periodic(
-          const Duration(milliseconds: 120),
-          (_) async {
-            if (!mounted || isSystemDragging) return;
-            if (ticks++ > 25) {
-              _systemVolBoostTimer?.cancel();
-              return;
-            }
-            final v = await _readSystemVol(
-              timeout: const Duration(milliseconds: 500),
-            );
-            if (v != null && (v - dragSystemVol.value).abs() > 0.003) {
-              dragSystemVol.value = v;
-            }
-          },
-        );
-      },
-      onClose: () {
-        _isMenuOpen = false;
-        _systemVolBoostTimer?.cancel();
-      },
-      menuChildren: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-          child: SizedBox(
-            width: menuWidth,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // System Volume Slider
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 8.0),
-                  child: Text(
-                    '系统音量',
-                    style: TextStyle(color: scheme.onSurface, fontSize: 12),
-                  ),
-                ),
-                SliderTheme(
-                  data: const SliderThemeData(
-                    showValueIndicator: ShowValueIndicator.never,
-                  ),
-                  child: ValueListenableBuilder(
-                    valueListenable: dragSystemVol,
-                    builder: (context, systemVolValue, _) {
-                      return LayoutBuilder(
-                        builder: (context, constraints) {
-                          const double padding = 24.0;
-                          final double trackWidth =
-                              constraints.maxWidth - (padding * 2);
-                          const double min = 0.0;
-                          const double max = 1.0;
-                          final double percent =
-                              (systemVolValue - min) / (max - min);
-                          final double leftOffset =
-                              padding + (trackWidth * percent);
-
-                          return MouseRegion(
-                            onEnter: (_) =>
-                                setState(() => _isSystemHovering = true),
-                            onExit: (_) =>
-                                setState(() => _isSystemHovering = false),
-                            child: Stack(
-                              clipBehavior: Clip.none,
-                              alignment: Alignment.centerLeft,
-                              children: [
-                                Slider(
-                                  thumbColor: scheme.secondary,
-                                  activeColor: scheme.secondary,
-                                  inactiveColor: scheme.outline,
-                                  min: min,
-                                  max: max,
-                                  value: systemVolValue,
-                                  onChangeStart: (value) {
-                                    isSystemDragging = true;
-                                    dragSystemVol.value = value;
-                                    systemVolumeService.set(value);
-                                    _triggerSystemIndicator();
-                                  },
-                                  onChanged: (value) {
-                                    dragSystemVol.value = value;
-                                    systemVolumeService.set(value);
-                                    if (isSystemDragging) {
-                                      _triggerSystemIndicator();
-                                    }
-                                  },
-                                  onChangeEnd: (value) {
-                                    isSystemDragging = false;
-                                    dragSystemVol.value = value;
-                                    systemVolumeService.set(value);
-                                  },
-                                ),
-                                if (_showSystemCustomIndicator ||
-                                    _isSystemHovering)
-                                  Positioned(
-                                    left: leftOffset - 24.0,
-                                    top: -40,
-                                    child: IgnorePointer(
-                                      child: _CustomValueIndicator(
-                                        value: systemVolValue * 100,
-                                        suffix: '%',
-                                        color: scheme.secondary,
-                                        textColor: scheme.onSecondary,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 8.0),
-                const Divider(height: 20),
-                const SizedBox(height: 4.0),
-                // App Volume Slider
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 8.0),
-                  child: Text(
-                    '应用音量',
-                    style: TextStyle(color: scheme.onSurface, fontSize: 12),
-                  ),
-                ),
-                SliderTheme(
-                  data: const SliderThemeData(
-                    showValueIndicator: ShowValueIndicator.never,
-                  ),
-                  child: ListenableBuilder(
-                    listenable: Listenable.merge([dragVolDsp, playbackService]),
-                    builder: (context, _) {
-                      final dragVolDspValue = dragVolDsp.value;
-                      final currentValue = isDragging
-                          ? dragVolDspValue
-                          : playbackService.volumeDsp;
-
-                      return LayoutBuilder(
-                        builder: (context, constraints) {
-                          const double padding = 24.0;
-                          final double trackWidth =
-                              constraints.maxWidth - (padding * 2);
-                          const double min = 0.0;
-                          const double max = 1.0;
-                          final double percent =
-                              (currentValue - min) / (max - min);
-                          final double leftOffset =
-                              padding + (trackWidth * percent);
-
-                          return MouseRegion(
-                            onEnter: (_) => setState(() => _isHovering = true),
-                            onExit: (_) => setState(() => _isHovering = false),
-                            child: Stack(
-                              clipBehavior: Clip.none,
-                              alignment: Alignment.centerLeft,
-                              children: [
-                                Slider(
-                                  thumbColor: scheme.primary,
-                                  activeColor: scheme.primary,
-                                  inactiveColor: scheme.outline,
-                                  min: min,
-                                  max: max,
-                                  value: currentValue,
-                                  onChangeStart: (value) {
-                                    isDragging = true;
-                                    dragVolDsp.value = value;
-                                    playbackService.setVolumeDsp(value);
-                                    _triggerIndicator();
-                                  },
-                                  onChanged: (value) {
-                                    dragVolDsp.value = value;
-                                    playbackService.setVolumeDsp(value);
-                                    // Also trigger indicator on drag
-                                    if (isDragging) _triggerIndicator();
-                                  },
-                                  onChangeEnd: (value) {
-                                    isDragging = false;
-                                    dragVolDsp.value = value;
-                                    playbackService.setVolumeDsp(value);
-                                  },
-                                ),
-                                if (_showCustomIndicator || _isHovering)
-                                  Positioned(
-                                    left:
-                                        leftOffset -
-                                        24.0, // Center the bubble (width 48)
-                                    top: -40,
-                                    child: IgnorePointer(
-                                      child: _CustomValueIndicator(
-                                        value: currentValue * 100,
-                                        suffix: '%',
-                                        color: scheme.primary,
-                                        textColor: scheme.onPrimary,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-      builder: (context, controller, _) {
-        _menuController = controller;
-        return IconButton(
-          tooltip: '音量',
-          onPressed: () {
-            if (controller.isOpen) {
-              controller.close();
-            } else {
-              controller.open();
-            }
-          },
-          icon: const Icon(Symbols.volume_up),
-          color: useMonet ? scheme.primary : scheme.onSurface,
-        );
-      },
+    return IconButton(
+      tooltip: '音量',
+      onPressed: _showVolumeDialog,
+      icon: const Icon(Symbols.volume_up),
+      color: useMonet ? scheme.primary : scheme.onSurface,
     );
   }
 }

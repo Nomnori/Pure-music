@@ -20,34 +20,9 @@ mod imp {
                 IMMDeviceEnumerator, IMMNotificationClient, IMMNotificationClient_Impl,
                 MMDeviceEnumerator, AUDIO_VOLUME_NOTIFICATION_DATA, DEVICE_STATE,
             },
-            System::Com::{
-                CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED,
-            },
+            System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED},
         },
     };
-
-    struct ComGuard;
-
-    impl ComGuard {
-        fn new() -> Option<Self> {
-            let hr = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
-            // S_OK = success, RPC_E_CHANGED_MODE = already initialized (acceptable)
-            // S_FALSE = already initialized
-            if hr.is_ok() || hr.0 == windows::Win32::Foundation::RPC_E_CHANGED_MODE.0 {
-                Some(ComGuard)
-            } else {
-                None
-            }
-        }
-    }
-
-    impl Drop for ComGuard {
-        fn drop(&mut self) {
-            unsafe { CoUninitialize() };
-        }
-    }
-
-    static COM_GUARD: Mutex<Option<ComGuard>> = Mutex::new(None);
 
     #[implement(IAudioEndpointVolumeCallback)]
     struct VolumeChangeCallback {
@@ -251,15 +226,13 @@ mod imp {
     static GLOBAL_MANAGER: Mutex<Option<Arc<Mutex<Option<VolumeManager>>>>> = Mutex::new(None);
 
     pub(super) fn system_volume_init(sink: StreamSink<f64>) -> Result<f64> {
-        let mut com_guard = COM_GUARD
-            .lock()
-            .map_err(|e| anyhow::anyhow!("Mutex poisoned: {}", e))?;
-        if com_guard.is_some() {
-            return Err(anyhow::anyhow!("COM already initialized"));
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
         }
-        *com_guard =
-            Some(ComGuard::new().ok_or_else(|| anyhow::anyhow!("COM initialization failed"))?);
-        drop(com_guard);
+
+        if let Ok(mut guard) = GLOBAL_MANAGER.lock() {
+            *guard = None;
+        }
 
         let sink_arc = Arc::new(Mutex::new(Some(sink)));
         let manager = VolumeManager::new(sink_arc.clone())?;
@@ -311,9 +284,6 @@ mod imp {
 
     pub(super) fn system_volume_dispose() {
         if let Ok(mut guard) = GLOBAL_MANAGER.lock() {
-            *guard = None;
-        }
-        if let Ok(mut guard) = COM_GUARD.lock() {
             *guard = None;
         }
     }

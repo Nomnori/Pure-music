@@ -162,8 +162,10 @@ class _DirectionalTabViewState extends State<DirectionalTabView>
           builder: (context, child) {
             final isCurrent = index == widget.index;
             final opacity = channel.opacity.value.clamp(0.0, 1.0);
-            final isVisible = isCurrent || opacity > 0.001;
-            Widget result = child!;
+            if (!isCurrent && opacity <= 0.001) {
+              return const SizedBox.shrink();
+            }
+            Widget result = SizedBox.expand(child: child!);
             if (!reduceMotion && channel.offset.value.abs() > 0.001) {
               result = Transform.translate(
                 offset: Offset(channel.offset.value, 0),
@@ -173,16 +175,13 @@ class _DirectionalTabViewState extends State<DirectionalTabView>
             if (opacity < 0.999) {
               result = Opacity(opacity: opacity, child: result);
             }
-            return Offstage(
-              offstage: !isVisible,
-              child: TickerMode(
-                enabled: isCurrent,
-                child: ExcludeSemantics(
-                  excluding: !isCurrent,
-                  child: IgnorePointer(
-                    ignoring: !isCurrent,
-                    child: result,
-                  ),
+            return IgnorePointer(
+              ignoring: !isCurrent,
+              child: ExcludeSemantics(
+                excluding: !isCurrent,
+                child: TickerMode(
+                  enabled: isCurrent,
+                  child: result,
                 ),
               ),
             );
