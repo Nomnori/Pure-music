@@ -89,9 +89,8 @@ output/
 todo/
 *.zip
 
-# Local docs
-docs/
-!page/docs/
+# Local docs site (keep locally, do not push)
+page/
 output/
 output/data/
 release/
